@@ -24,83 +24,12 @@ def set_seed(seed):
         torch.backends.cudnn.benchmark = False
     os.environ["PYTHONHASHSEED"] = str(seed)
 
+
 def __get_device__() :
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = "cpu"
     print('Device available is', device)
     return device
-
-def __contextual_rep__(device, train_path_stutter, train_path_fluent) :
-    # Get wav2vec2.0
-    bundle = torchaudio.pipelines.WAV2VEC2_BASE
-    print("Sample Rate of model:", bundle.sample_rate)
-    
-    model_wav2vec = bundle.get_model().to(device)
-    ## Convert audio to numpy to wav2vec feature encodings
-    def conv_audio_data (filename) :
-        waveform, sample_rate = torchaudio.load(filename)
-        waveform = waveform.to(device)
-        if sample_rate != bundle.sample_rate:
-            print('Mismatched sample rate')
-            waveform = torchaudio.functional.resample(waveform, sample_rate, bundle.sample_rate)
-        emission, _ = model_wav2vec(waveform)
-        emission = emission.cpu().detach().numpy()
-        return emission
-    
-    x_f = []
-    y_f = []
-    x_s = []
-    y_s = []
-    
-    discarded_s = 0
-    # Convert to the embeddings for training data
-    for filename in glob.glob(os.path.join(train_path_stutter, '*.wav')):
-        stutter_np = conv_audio_data(filename)
-        # fluent_np --> (1, 149, 768)
-        if ((np.shape(stutter_np)[0] != 1) |(np.shape(stutter_np)[1] != 149) | (np.shape(stutter_np)[2] != 768)) :
-            discarded_s += 1
-        else:
-            x_s.append(stutter_np)
-            y_s.append(1)
-    
-    discarded = 0
-    for filename in glob.glob(os.path.join(train_path_fluent, '*.wav')):
-        fluent_np = conv_audio_data(filename)
-        # fluent_np --> (1, 149, 768)
-        if ((np.shape(fluent_np)[0] != 1) |(np.shape(fluent_np)[1] != 149) | (np.shape(fluent_np)[2] != 768)) :
-            discarded += 1
-        else:
-            x_f.append(fluent_np)
-            y_f.append(0)
-    return x_f, y_f, x_s, y_s     
-
-def __contextual_rep_test__():
-    x_t_f = []
-    y_t_f = []
-    x_t_s = []
-    y_t_s = []
-    
-    discarded_t_s = 0
-    # Convert to the embeddings for test data
-    for filename in glob.glob(os.path.join(test_path_stutter, '*.wav')):
-        stutter_np = conv_audio_data(filename)
-        # stutter_np --> (1, 149, 768)
-        if ((np.shape(stutter_np)[0] != 1) |(np.shape(stutter_np)[1] != 149) | (np.shape(stutter_np)[2] != 768)) :
-            discarded_t_s += 1
-        else:
-            x_t_s.append(stutter_np)
-            y_t_s.append(1)
-    
-    discarded_t = 0
-    for filename in glob.glob(os.path.join(test_path_fluent, '*.wav')):
-        fluent_np = conv_audio_data(filename)
-        # fluent_np --> (1, 149, 768)
-        if ((np.shape(fluent_np)[0] != 1) |(np.shape(fluent_np)[1] != 149) | (np.shape(fluent_np)[2] != 768)) :
-            discarded_t += 1
-        else:
-            x_t_f.append(fluent_np)
-            y_t_f.append(0)
-    return x_t_f, y_t_f, x_t_s, y_t_s           
 
 
 ## Shuffle and pick a quarter of the data
@@ -121,18 +50,6 @@ def __shuffle_pick_quarter_data__ (x_f, y_f, x_s, y_s) :
     y_train = y_s_h + y_f_h
     return x_train, y_train
 
-
-## Pick test set in abalanced fashion
-# Comment this for unblanced data
-# Stutter is less than fluent
-def __test_balanced_data__(x_t_f, x_t_s, y_t_f, y_t_s):
-    random.shuffle(x_t_f)
-    random.shuffle(x_t_s)
-    x_t_f = x_t_f[0:len(x_t_s)]
-    y_t_f = y_t_f[0:len(x_t_s)]
-    
-    x_test = x_t_s + x_t_f
-    y_test = y_t_s + y_t_f
 
 def train(epoch):
   print('\nEpoch : %d'%epoch)

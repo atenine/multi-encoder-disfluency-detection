@@ -25,8 +25,6 @@ from datetime import datetime
 from helper_functions import set_seed
 from helper_functions import __get_device__
 from helper_functions import __shuffle_pick_quarter_data__
-from helper_functions import __contextual_rep__
-from helper_functions import __test_balanced_data__
 from helper_functions import train
 from helper_functions import test
 
