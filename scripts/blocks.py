@@ -18,6 +18,9 @@ import glob
 from torch.utils.tensorboard import SummaryWriter
 import random
 
+from tqdm import tqdm
+from datetime import datetime
+
 # Custom functions
 from helper_functions import set_seed
 from helper_functions import __get_device__
@@ -26,6 +29,8 @@ from helper_functions import __contextual_rep__
 from helper_functions import __test_balanced_data__
 from helper_functions import train
 from helper_functions import test
+
+script_start_time = datetime.now()
 
 # get all data
 train_path_stutter = 'train_data/blocks'
@@ -41,18 +46,26 @@ writer = SummaryWriter("wav2vec_base_model_quart_data_blocks")
 writer = SummaryWriter(comment="Quart dataset for binary classification blocks;")
 ##################################################################################################
 
+print("Loading encoder...")
 MODEL_NAME = "alkiskoudounas/voc2vec-hubert-ls-pt" # facebook/wav2vec2-base, alkiskoudounas/voc2vec-hubert-ls-pt
 encoder_config = AutoConfig.from_pretrained(MODEL_NAME)   
-encoder = AutoModel.from_pretrained(MODEL_NAME) 
+encoder = AutoModel.from_pretrained(MODEL_NAME, device_map="cuda")
 
 def conv_audio_data (filename) :
     waveform, sample_rate = torchaudio.load(filename)
+
+    # ensures both input and encoder are on the same device
+    waveform = waveform.to(device)
+
     # Extract features
     emission = encoder(waveform)['last_hidden_state']
     emission = emission.cpu().detach().numpy()
-    # print(emission)
+
     return emission
 
+
+print("Loading data...")
+data_start_time = datetime.now()
 
 x_f = []
 y_f = []
@@ -61,8 +74,7 @@ y_s = []
 
 discarded_s = 0
 # Convert to the embeddings for training data
-print("Generating train stutter embeddings...")
-for filename in glob.glob(os.path.join(train_path_stutter, '*.wav')):
+for filename in tqdm(glob.glob(os.path.join(train_path_stutter, '*.wav')), desc="Generating train stutter embeddings: "):
     stutter_np = conv_audio_data(filename)
     # fluent_np --> (1, 149, 768)
     # print(np.shape(stutter_np))
@@ -71,12 +83,9 @@ for filename in glob.glob(os.path.join(train_path_stutter, '*.wav')):
     else:
         x_s.append(stutter_np)
         y_s.append(1)
-print(str(len(y_s)) + ' embeddings generated')
-
 
 discarded = 0
-print("Generating train fluent embeddings...")
-for filename in glob.glob(os.path.join(train_path_fluent, '*.wav')):
+for filename in tqdm(glob.glob(os.path.join(train_path_fluent, '*.wav')), desc="Generating train fluent embeddings..."):
     fluent_np = conv_audio_data(filename)
     # fluent_np --> (1, 149, 768)
     if ((np.shape(fluent_np)[0] != 1) |(np.shape(fluent_np)[1] != 149) | (np.shape(fluent_np)[2] != 768)) :
@@ -84,9 +93,10 @@ for filename in glob.glob(os.path.join(train_path_fluent, '*.wav')):
     else:
         x_f.append(fluent_np)
         y_f.append(0)
-print(str(len(y_f)) + ' embeddings generated')
 
-x_train, y_train = __shuffle_pick_quarter_data__ (x_f, y_f, x_s, y_s)       
+x_train, y_train = __shuffle_pick_quarter_data__ (x_f, y_f, x_s, y_s)
+# x_train = x_f + x_s
+# y_train = y_f + y_s   
 ##################################################################################################
 
 x_t_f = []
@@ -96,8 +106,7 @@ y_t_s = []
 
 discarded_t_s = 0
 # Convert to the embeddings for test data
-print("Generating test stutter embeddings...")
-for filename in glob.glob(os.path.join(test_path_stutter, '*.wav')):
+for filename in tqdm(glob.glob(os.path.join(test_path_stutter, '*.wav')), desc = "Generating test stutter embeddings..."):
     stutter_np = conv_audio_data(filename)
     # stutter_np --> (1, 149, 768)
     if ((np.shape(stutter_np)[0] != 1) |(np.shape(stutter_np)[1] != 149) | (np.shape(stutter_np)[2] != 768)) :
@@ -105,12 +114,9 @@ for filename in glob.glob(os.path.join(test_path_stutter, '*.wav')):
     else:
         x_t_s.append(stutter_np)
         y_t_s.append(1)
-        print("")
-print(str(len(y_t_s)) + ' embeddings generated')
 
 discarded_t = 0
-print("Generating test fluent embeddings...")
-for filename in glob.glob(os.path.join(test_path_fluent, '*.wav')):
+for filename in tqdm(glob.glob(os.path.join(test_path_fluent, '*.wav')), desc = "Generating test fluent embeddings..."):
     fluent_np = conv_audio_data(filename)
     # fluent_np --> (1, 149, 768)
     if ((np.shape(fluent_np)[0] != 1) |(np.shape(fluent_np)[1] != 149) | (np.shape(fluent_np)[2] != 768)) :
@@ -118,18 +124,22 @@ for filename in glob.glob(os.path.join(test_path_fluent, '*.wav')):
     else:
         x_t_f.append(fluent_np)
         y_t_f.append(0)
-print(str(len(y_t_f)) + ' embeddings generated')
 
 random.shuffle(x_t_f)
 random.shuffle(x_t_s)
 x_t_f = x_t_f[0:len(x_t_s)]
 y_t_f = y_t_f[0:len(x_t_s)]
-    
+
 x_test = x_t_s + x_t_f
 y_test = y_t_s + y_t_f
+
+data_finish_time = datetime.now()
+
+print("Loaded data in " + str(data_finish_time - data_start_time) + " seconds")
+
 ##################################################################################################
 ## Hyper parameters
-batch_size = 512
+batch_size = 256
 num_epochs = 150
 learning_rate = 0.0001
 
@@ -330,9 +340,14 @@ def test(epoch):
   print('Validation Loss: %.3f | Accuracy: %.3f'%(test_loss,accu))  
 
 epochs=num_epochs
+train_start_time = datetime.now()
 for epoch in range(1,epochs+1): 
   train(epoch)
   test(epoch)
+
+train_end_time = datetime.now()
+print("\nFinished training model in " + str(train_end_time - train_start_time) + " seconds.\n")
+
 ##################################################################################################
 # torch.save(model, 'DisfluencyNet_wp_quart.pth')
 ##################################################################################################
@@ -390,3 +405,6 @@ f1_score = 2 * precision * recall / (precision + recall)
 print(f'Precision of the network on test dataset is : {precision}')
 print(f'Recall of the network on test dataset is : {recall}')
 print(f'F1 Score of the network on test dataset is : {f1_score}')
+
+script_finish_time = datetime.now()
+print("\nEntire script took " + str(script_finish_time - script_start_time) + " seconds to run.")
