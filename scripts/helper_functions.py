@@ -50,6 +50,23 @@ def __shuffle_pick_quarter_data__ (x_f, y_f, x_s, y_s) :
     y_train = y_s_h + y_f_h
     return x_train, y_train
 
+## Shuffle the data
+def __shuffle_data__ (x_f, y_f, x_s, y_s) :
+    # Take only quarter dataset
+    random.shuffle(x_f)
+    random.shuffle(x_s)
+    x_s_h = x_s[0:int(len(x_s))]
+    y_s_h = y_s[0:int(len(x_s))]
+    
+    
+    # Comment this for unblanced data
+    # Stutter is less than fluent
+    x_f_h = x_f[0:len(x_s_h)]
+    y_f_h = y_f[0:len(x_s_h)]
+    
+    x_train = x_s_h + x_f_h
+    y_train = y_s_h + y_f_h
+    return x_train, y_train
 
 def train(epoch):
   print('\nEpoch : %d'%epoch)
@@ -121,3 +138,33 @@ def test(epoch):
   eval_accu.append(accu)
 
   print('Validation Loss: %.3f | Accuracy: %.3f'%(test_loss,accu))  
+  return test_loss
+
+
+class EarlyStopping:
+  def __init__(self, patience, delta):
+    self.patience = patience
+    self.delta = delta
+    self.best_loss = None
+    self.num_no_improvement = 0
+    self.best_model = None
+
+  def __call__(self, validate_loss, model):
+
+    if self.best_loss is None:
+      self.best_loss = validate_loss
+      self.best_model = model.state_dict()
+
+    elif validate_loss >= self.best_loss + self.delta:
+      self.num_no_improvement += 1
+
+      if self.num_no_improvement >= self.patience:
+          return True # stop here!
+
+    else:
+      self.num_no_improvement = 0 # improvement seen, so reset here
+      self.best_loss = validate_loss
+      self.best_model = model.state_dict()
+      
+  def load_model(self, model):
+    model.load_state_dict(self.best_model)

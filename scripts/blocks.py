@@ -25,8 +25,10 @@ from datetime import datetime
 from helper_functions import set_seed
 from helper_functions import __get_device__
 from helper_functions import __shuffle_pick_quarter_data__
+from helper_functions import __shuffle_data__
 from helper_functions import train
 from helper_functions import test
+from helper_functions import EarlyStopping
 
 script_start_time = datetime.now()
 
@@ -45,7 +47,8 @@ writer = SummaryWriter(comment="Quart dataset for binary classification blocks;"
 ##################################################################################################
 
 print("Loading encoder...")
-MODEL_NAME = "alkiskoudounas/voc2vec-hubert-ls-pt" # facebook/wav2vec2-base, alkiskoudounas/voc2vec-hubert-ls-pt
+# MODEL_NAME = "alkiskoudounas/voc2vec-hubert-ls-pt" # voc2vec
+MODEL_NAME = "facebook/wav2vec2-base" # wav2vec
 encoder_config = AutoConfig.from_pretrained(MODEL_NAME)   
 encoder = AutoModel.from_pretrained(MODEL_NAME, device_map="cuda")
 
@@ -92,7 +95,8 @@ for filename in tqdm(glob.glob(os.path.join(train_path_fluent, '*.wav')), desc="
         x_f.append(fluent_np)
         y_f.append(0)
 
-x_train, y_train = __shuffle_pick_quarter_data__ (x_f, y_f, x_s, y_s)
+x_train, y_train = __shuffle_pick_quarter_data__(x_f, y_f, x_s, y_s)
+# x_train, y_train = __shuffle_data__ (x_f, y_f, x_s, y_s)
 # x_train = x_f + x_s
 # y_train = y_f + y_s   
 ##################################################################################################
@@ -125,8 +129,9 @@ for filename in tqdm(glob.glob(os.path.join(test_path_fluent, '*.wav')), desc = 
 
 random.shuffle(x_t_f)
 random.shuffle(x_t_s)
-x_t_f = x_t_f[0:len(x_t_s)]
-y_t_f = y_t_f[0:len(x_t_s)]
+# we do not want balanced classes for our testing
+# x_t_f = x_t_f[0:len(x_t_s)]
+# y_t_f = y_t_f[0:len(x_t_s)]
 
 x_test = x_t_s + x_t_f
 y_test = y_t_s + y_t_f
@@ -143,7 +148,7 @@ learning_rate = 0.0001
 
 ## DATA LOADER ##
 # split data and translate to dataloader
-x_train_n, x_valid, y_train_n, y_valid = train_test_split(x_train, y_train, test_size=0.1, random_state=123, shuffle=True, stratify = y_train)
+x_train, x_valid, y_train, y_valid = train_test_split(x_train, y_train, test_size=0.1, random_state=123, shuffle=True, stratify = y_train)
 
 n_samples_train = np.shape(x_train)[0]
 n_samples_valid = np.shape(x_valid)[0]
@@ -256,7 +261,8 @@ model = StutterNet(batch_size).to(device)
 print(model)
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)  
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+early_stopper = EarlyStopping(patience=5, delta=0.01)
 
 ## MODEL TRAINING LOOP ###
 train_accu= []
@@ -335,13 +341,20 @@ def test(epoch):
   eval_losses.append(test_loss)
   eval_accu.append(accu)
 
-  print('Validation Loss: %.3f | Accuracy: %.3f'%(test_loss,accu))  
+  print('Validation Loss: %.3f | Accuracy: %.3f'%(test_loss,accu))
+  return test_loss
 
 epochs=num_epochs
 train_start_time = datetime.now()
 for epoch in range(1,epochs+1): 
-  train(epoch)
-  test(epoch)
+    train(epoch)
+    eval_loss = test(epoch)
+    torch.cuda.empty_cache()
+    if early_stopper(eval_loss, model):
+        print('Eval performance not improving; would be early stopping now!')
+        model.load_state_dict(early_stopper.best_model)
+        # TODO: figure out why break makes our number of predictions go to zero :|
+        # break
 
 train_end_time = datetime.now()
 print("\nFinished training model in " + str(train_end_time - train_start_time) + " seconds.\n")
@@ -355,8 +368,9 @@ test_loader = DataLoader(dataset=test_dataset,
                           shuffle=True,
                           num_workers=0)
 
-model.eval()                          
-                          
+model.load_state_dict(early_stopper.best_model)
+model.eval()
+
 with torch.no_grad():
 
    total = 0
@@ -395,13 +409,16 @@ for i in range (0, len(predicted)) :
     if (predicted[i] == labels[i]) :
         n_correct = n_correct + 1
 
+print(f'Predicted stutter: {predicted_stutter}%')
+print(f'Correct stutter predictions: {correct_stutter}%')
+
 acc_test = 100*correct/total
 print(f'Accuracy of the network on test dataset is : {acc_test} %')
 recall = correct_stutter/ labels_stutter
-precision = correct_stutter / predicted_stutter
-f1_score = 2 * precision * recall / (precision + recall)    
-print(f'Precision of the network on test dataset is : {precision}')
 print(f'Recall of the network on test dataset is : {recall}')
+precision = correct_stutter / predicted_stutter
+print(f'Precision of the network on test dataset is : {precision}')
+f1_score = 2 * precision * recall / (precision + recall)    
 print(f'F1 Score of the network on test dataset is : {f1_score}')
 
 script_finish_time = datetime.now()
