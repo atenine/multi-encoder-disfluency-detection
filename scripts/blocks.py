@@ -253,8 +253,8 @@ def main():
             x_f.append(fluent_np)
             y_f.append(0)
 
-    x_train, y_train = __shuffle_pick_quarter_data__(x_f, y_f, x_s, y_s)
-    # x_train, y_train = __shuffle_data__ (x_f, y_f, x_s, y_s)
+    # x_train, y_train = __shuffle_pick_quarter_data__(x_f, y_f, x_s, y_s)
+    x_train, y_train = __shuffle_data__ (x_f, y_f, x_s, y_s)
     # x_train = x_f + x_s
     # y_train = y_f + y_s   
     ##################################################################################################
