@@ -3,4 +3,6 @@ train_data/
 scripts/__pycache__/
 runs/
 models/
-wav2vec_base_model_quart_data_blocks/
+data/
+.env
+SEP-28k-CLIP.tar.gz

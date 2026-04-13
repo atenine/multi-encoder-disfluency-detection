@@ -5,7 +5,8 @@ import torchaudio
 from transformers import AutoConfig, AutoModel
 
 from huggingface_hub import login
-login('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')
+from dotenv import dotenv_values
+login(dotenv_values()['HUGGINGFACE_API_KEY'])
 
 #from __future__ import print_function, division
 import os
@@ -217,7 +218,8 @@ def main():
 
     print("Loading encoder...")
     # MODEL_NAME = "alkiskoudounas/voc2vec-hubert-ls-pt" # voc2vec
-    MODEL_NAME = "facebook/wav2vec2-base" # wav2vec
+    # MODEL_NAME = "facebook/wav2vec2-base" # wav2vec
+    MODEL_NAME = "openai/whisper-large-v3-turbo" # whisper
     global encoder_config
     global encoder
     encoder_config = AutoConfig.from_pretrained(MODEL_NAME)   
