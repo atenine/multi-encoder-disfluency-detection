@@ -1,7 +1,6 @@
 test_data/
 train_data/
 scripts/__pycache__/
-runs/
 models/
 data/
 .env
