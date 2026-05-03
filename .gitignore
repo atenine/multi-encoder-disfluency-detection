@@ -1,7 +1,7 @@
 test_data/
 train_data/
 scripts/__pycache__/
-models/
 data/
 .env
+runs/
 SEP-28k-CLIP.tar.gz
